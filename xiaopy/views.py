@@ -1,6 +1,8 @@
 import requests
 from django.http import HttpResponse
-from rest_framework import generics
+from rest_framework import generics, status
+from rest_framework.decorators import api_view
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,6 +11,7 @@ from xiaopy.models import User
 from xiaopy.serializers import UserSerializer
 
 
+@api_view(['POST'])
 def hello(request):
     r = requests.get('http://www.baidu.com')
     print(r.content)
@@ -21,7 +24,6 @@ def httpPost(request):
     resp = requests.post(url, json=data, verify=False)
     print(resp.content.decode('utf-8'))
     return HttpResponse('123')
-
 
 
 #  http 请求例子
@@ -44,13 +46,23 @@ def listAllUser(request):
     return HttpResponse('Hello world!1')
 
 
+
+# 列表视图
 class UserListView(APIView):
+    """
+    * 需要 token 认证。
+    * 只有 admin 用户才能访问此视图
+    """
+    # authentication_classes = (authentication.TokenAuthentication,)
+    # permission_classes = (permissions.IsAdminUser,)
+    # GET 查询请求
     def get(self, request):
         result = User.objects.values()
         json = UserSerializer(result, many=True)
         # return JsonResponse(json.data,safe=False,status=201)
         return Response(json.data)
 
+    # POST 请求
     def post(self, request):
         user = UserSerializer(data=request.data, many=False)
         print(request.data)
@@ -59,12 +71,66 @@ class UserListView(APIView):
             user.save()
             return Response(user.data)
         else:
-            return Response(user.errors)
+            return Response(user.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# 详情视图
+class UserDetailView(APIView):
+    def get(self, request, pk):
+        student = User.objects.get(id=pk)
+        if not student:
+            return Response(None,status=status.HTTP_404_NOT_FOUND)
+        print('student %s' % student)
+        serializer = UserSerializer(student)
+        print(serializer.data)
+        return Response(serializer.data)
+
+    def post(self, request):
+        user = UserSerializer(data=request.data)
+        if user.is_valid():
+            user.save()
+            return Response(user.data)
+        return Response(user.data, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self,request,pk):
+        instance=User.objects.get(pk=pk)
+        user = UserSerializer(data=request.data,instance=instance)
+        if user.is_valid():
+            user.save()
+            return Response(user.data)
+        return Response(user.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self,request,pk):
+        User.objects.get(id=pk).delete()
+        return Response()
+
+# 分页类声明
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+
+# 自定义分页
+class CustomPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
+    def get_paginated_response(self, data):
+        return Response({
+            # 'links': {
+            #     'next1': self.get_next_link(),
+            #     'previous1': self.get_previous_link()
+            # },
+            'pageSize':self.page.number,
+            'count': self.page.paginator.count,
+            'data': data
+        })
 
 
 # class
-
-
-class UserDetail(generics.RetrieveAPIView):
+class UserDetail(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    pagination_class = CustomPagination
+
+

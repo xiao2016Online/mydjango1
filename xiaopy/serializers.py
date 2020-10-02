@@ -21,3 +21,8 @@ class UserSerializer(serializers.Serializer):
         print('序列化%s' % validated_data)
         user = User.objects.create(**validated_data)
         return user
+
+    def update(self, instance, validated_data):
+        instance.name = validated_data.get('name', instance.name)
+        instance.save()
+        return instance
